@@ -89,9 +89,7 @@ func SeverityFromString(severity string) policyreportv1alpha2.PolicySeverity {
 	return ""
 }
 
-func ToPolicyReportResult(pol engineapi.GenericPolicy, ruleResult engineapi.RuleResponse, resource *corev1.ObjectReference) policyreportv1alpha2.PolicyReportResult {
-	policyName, _ := cache.MetaNamespaceKeyFunc(pol)
-	annotations := pol.GetAnnotations()
+func ToPolicyReportResult(policyType engineapi.PolicyType, policyName string, ruleResult engineapi.RuleResponse, annotations map[string]string, resource *corev1.ObjectReference) policyreportv1alpha2.PolicyReportResult {
 	result := policyreportv1alpha2.PolicyReportResult{
 		Source:     kyverno.ValueKyvernoApp,
 		Policy:     policyName,
@@ -126,7 +124,7 @@ func ToPolicyReportResult(pol engineapi.GenericPolicy, ruleResult engineapi.Rule
 	if pss != nil && len(pss.Checks) > 0 {
 		addPodSecurityProperties(pss, &result)
 	}
-	if pol.AsValidatingAdmissionPolicy() != nil {
+	if policyType == engineapi.ValidatingAdmissionPolicyType {
 		result.Source = "ValidatingAdmissionPolicy"
 		result.Policy = ruleResult.Name()
 		if ruleResult.ValidatingAdmissionPolicyBinding() != nil {
@@ -180,9 +178,14 @@ func addPodSecurityProperties(pss *engineapi.PodSecurityChecks, result *policyre
 }
 
 func EngineResponseToReportResults(response engineapi.EngineResponse) []policyreportv1alpha2.PolicyReportResult {
+	pol := response.Policy()
+	policyName, _ := cache.MetaNamespaceKeyFunc(pol.AsKyvernoPolicy())
+	policyType := pol.GetType()
+	annotations := pol.GetAnnotations()
+
 	results := make([]policyreportv1alpha2.PolicyReportResult, 0, len(response.PolicyResponse.Rules))
 	for _, ruleResult := range response.PolicyResponse.Rules {
-		result := ToPolicyReportResult(response.Policy(), ruleResult, nil)
+		result := ToPolicyReportResult(policyType, policyName, ruleResult, annotations, nil)
 		results = append(results, result)
 	}
 
@@ -190,9 +193,14 @@ func EngineResponseToReportResults(response engineapi.EngineResponse) []policyre
 }
 
 func MutationEngineResponseToReportResults(response engineapi.EngineResponse) []policyreportv1alpha2.PolicyReportResult {
+	pol := response.Policy()
+	policyName, _ := cache.MetaNamespaceKeyFunc(pol.AsKyvernoPolicy())
+	policyType := pol.GetType()
+	annotations := pol.GetAnnotations()
+
 	results := make([]policyreportv1alpha2.PolicyReportResult, 0, len(response.PolicyResponse.Rules))
 	for _, ruleResult := range response.PolicyResponse.Rules {
-		result := ToPolicyReportResult(response.Policy(), ruleResult, nil)
+		result := ToPolicyReportResult(policyType, policyName, ruleResult, annotations, nil)
 		if target, _, _ := ruleResult.PatchedTarget(); target != nil {
 			addProperty("patched-target", getResourceInfo(target.GroupVersionKind(), target.GetName(), target.GetNamespace()), &result)
 		}
@@ -203,9 +211,14 @@ func MutationEngineResponseToReportResults(response engineapi.EngineResponse) []
 }
 
 func GenerationEngineResponseToReportResults(response engineapi.EngineResponse) []policyreportv1alpha2.PolicyReportResult {
+	pol := response.Policy()
+	policyName, _ := cache.MetaNamespaceKeyFunc(pol.AsKyvernoPolicy())
+	policyType := pol.GetType()
+	annotations := pol.GetAnnotations()
+
 	results := make([]policyreportv1alpha2.PolicyReportResult, 0, len(response.PolicyResponse.Rules))
 	for _, ruleResult := range response.PolicyResponse.Rules {
-		result := ToPolicyReportResult(response.Policy(), ruleResult, nil)
+		result := ToPolicyReportResult(policyType, policyName, ruleResult, annotations, nil)
 		if generatedResources := ruleResult.GeneratedResources(); len(generatedResources) != 0 {
 			property := make([]string, 0)
 			for _, r := range generatedResources {

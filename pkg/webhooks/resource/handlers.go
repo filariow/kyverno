@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alitto/pond"
@@ -35,7 +36,6 @@ import (
 	webhookgenerate "github.com/kyverno/kyverno/pkg/webhooks/updaterequest"
 	webhookutils "github.com/kyverno/kyverno/pkg/webhooks/utils"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/wait"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 )
 
@@ -145,18 +145,21 @@ func (h *resourceHandlers) Validate(ctx context.Context, logger logr.Logger, req
 		h.reportingConfig,
 		h.reportsBreaker,
 	)
-	var wg wait.Group
+	var wg sync.WaitGroup
 	var ok bool
 	var msg string
 	var warnings []string
 	var enforceResponses []engineapi.EngineResponse
-	wg.Start(func() {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		ok, msg, warnings, enforceResponses = vh.HandleValidationEnforce(ctx, request, policies, auditWarnPolicies, startTime)
-	})
+	}()
+
 	if !admissionutils.IsDryRun(request.AdmissionRequest) {
-		var dummy wait.Group
-		h.handleBackgroundApplies(ctx, logger, request, generatePolicies, mutatePolicies, startTime, &dummy)
+		h.handleBackgroundApplies(ctx, logger, request, generatePolicies, mutatePolicies, startTime, nil)
 	}
+
 	wg.Wait()
 	if !ok {
 		logger.Info("admission request denied")

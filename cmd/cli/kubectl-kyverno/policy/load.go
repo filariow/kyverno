@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-git/go-billy/v5"
 	kyvernov1 "github.com/kyverno/kyverno/api/kyverno/v1"
-	kyvernov2alpha1 "github.com/kyverno/kyverno/api/kyverno/v2alpha1"
 	kyvernov2beta1 "github.com/kyverno/kyverno/api/kyverno/v2beta1"
 	"github.com/kyverno/kyverno/cmd/cli/kubectl-kyverno/data"
 	"github.com/kyverno/kyverno/cmd/cli/kubectl-kyverno/experimental"
@@ -24,19 +23,19 @@ import (
 	"github.com/pkg/errors"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/kubectl-validate/pkg/openapiclient"
 )
 
 var (
-	policyV1              = kyvernov1.SchemeGroupVersion.WithKind("Policy")
-	policyV2              = kyvernov2beta1.SchemeGroupVersion.WithKind("Policy")
-	clusterPolicyV1       = kyvernov1.SchemeGroupVersion.WithKind("ClusterPolicy")
-	clusterPolicyV2       = kyvernov2beta1.SchemeGroupVersion.WithKind("ClusterPolicy")
+	policyV1              = schema.GroupVersion(kyvernov1.GroupVersion).WithKind("Policy")
+	policyV2              = schema.GroupVersion(kyvernov2beta1.GroupVersion).WithKind("Policy")
+	clusterPolicyV1       = schema.GroupVersion(kyvernov1.GroupVersion).WithKind("ClusterPolicy")
+	clusterPolicyV2       = schema.GroupVersion(kyvernov2beta1.GroupVersion).WithKind("ClusterPolicy")
 	vapV1Beta1            = admissionregistrationv1beta1.SchemeGroupVersion.WithKind("ValidatingAdmissionPolicy")
 	vapBindingV1beta1     = admissionregistrationv1beta1.SchemeGroupVersion.WithKind("ValidatingAdmissionPolicyBinding")
 	vapV1                 = admissionregistrationv1.SchemeGroupVersion.WithKind("ValidatingAdmissionPolicy")
 	vapBindingV1          = admissionregistrationv1.SchemeGroupVersion.WithKind("ValidatingAdmissionPolicyBinding")
-	vpV2alpha1            = kyvernov2alpha1.SchemeGroupVersion.WithKind("ValidatingPolicy")
 	LegacyLoader          = legacyLoader
 	KubectlValidateLoader = kubectlValidateLoader
 	defaultLoader         = func(path string, bytes []byte) (*LoaderResults, error) {
@@ -54,11 +53,10 @@ type LoaderError struct {
 }
 
 type LoaderResults struct {
-	Policies           []kyvernov1.PolicyInterface
-	VAPs               []admissionregistrationv1beta1.ValidatingAdmissionPolicy
-	VAPBindings        []admissionregistrationv1beta1.ValidatingAdmissionPolicyBinding
-	ValidatingPolicies []kyvernov2alpha1.ValidatingPolicy
-	NonFatalErrors     []LoaderError
+	Policies       []kyvernov1.PolicyInterface
+	VAPs           []admissionregistrationv1beta1.ValidatingAdmissionPolicy
+	VAPBindings    []admissionregistrationv1beta1.ValidatingAdmissionPolicyBinding
+	NonFatalErrors []LoaderError
 }
 
 func (l *LoaderResults) merge(results *LoaderResults) {
@@ -68,7 +66,6 @@ func (l *LoaderResults) merge(results *LoaderResults) {
 	l.Policies = append(l.Policies, results.Policies...)
 	l.VAPs = append(l.VAPs, results.VAPs...)
 	l.VAPBindings = append(l.VAPBindings, results.VAPBindings...)
-	l.ValidatingPolicies = append(l.ValidatingPolicies, results.ValidatingPolicies...)
 	l.NonFatalErrors = append(l.NonFatalErrors, results.NonFatalErrors...)
 }
 
@@ -89,6 +86,7 @@ func LoadWithLoader(loader loader, fs billy.Filesystem, resourcePath string, pat
 	if loader == nil {
 		loader = defaultLoader
 	}
+
 	aggregateResults := &LoaderResults{}
 	for _, path := range paths {
 		var err error
@@ -107,11 +105,13 @@ func LoadWithLoader(loader loader, fs billy.Filesystem, resourcePath string, pat
 		}
 		aggregateResults.merge(results)
 	}
+
 	// It's hard to use apply with the fake client, so disable all server side
 	// https://github.com/kubernetes/kubernetes/issues/99953
 	for _, policy := range aggregateResults.Policies {
 		policy.GetSpec().UseServerSideApply = false
 	}
+
 	return aggregateResults, nil
 }
 
@@ -121,10 +121,12 @@ func kubectlValidateLoader(path string, content []byte) (*LoaderResults, error) 
 		return nil, err
 	}
 	results := &LoaderResults{}
+
 	crds, err := data.Crds()
 	if err != nil {
 		return nil, err
 	}
+
 	factory, err := resourceloader.New(openapiclient.NewComposite(
 		openapiclient.NewHardcodedBuiltins("1.30"),
 		openapiclient.NewLocalCRDFiles(crds),
@@ -132,6 +134,7 @@ func kubectlValidateLoader(path string, content []byte) (*LoaderResults, error) 
 	if err != nil {
 		return nil, err
 	}
+
 	for _, document := range documents {
 		gvk, untyped, err := factory.Load(document)
 		if err != nil {
@@ -168,12 +171,6 @@ func kubectlValidateLoader(path string, content []byte) (*LoaderResults, error) 
 				return nil, err
 			}
 			results.VAPBindings = append(results.VAPBindings, *typed)
-		case vpV2alpha1:
-			typed, err := convert.To[kyvernov2alpha1.ValidatingPolicy](untyped)
-			if err != nil {
-				return nil, err
-			}
-			results.ValidatingPolicies = append(results.ValidatingPolicies, *typed)
 		default:
 			return nil, fmt.Errorf("policy type not supported %s", gvk)
 		}

@@ -584,15 +584,12 @@ codegen-cli-docs: $(CLI_BIN) ## Generate CLI docs
 	@KYVERNO_EXPERIMENTAL=true $(CLI_BIN) docs -o docs/user/cli/commands --autogenTag=false
 
 .PHONY: codegen-cli-crds
-codegen-cli-crds: ## Copy generated CRDs to embed in the CLI
-codegen-cli-crds: codegen-crds-kyverno
-codegen-cli-crds: codegen-crds-cli
+codegen-cli-crds: codegen-crds-kyverno ## Copy generated CRDs to embed in the CLI
 	@echo Copy generated CRDs to embed in the CLI... >&2
 	@rm -rf cmd/cli/kubectl-kyverno/data/crds && mkdir -p cmd/cli/kubectl-kyverno/data/crds
 	@cp config/crds/kyverno/kyverno.io_clusterpolicies.yaml cmd/cli/kubectl-kyverno/data/crds
 	@cp config/crds/kyverno/kyverno.io_policies.yaml cmd/cli/kubectl-kyverno/data/crds
 	@cp config/crds/kyverno/kyverno.io_policyexceptions.yaml cmd/cli/kubectl-kyverno/data/crds
-	@cp config/crds/kyverno/kyverno.io_validatingpolicies.yaml cmd/cli/kubectl-kyverno/data/crds
 	@cp cmd/cli/kubectl-kyverno/config/crds/* cmd/cli/kubectl-kyverno/data/crds
 
 .PHONY: codegen-docs-all
@@ -637,7 +634,6 @@ codegen-helm-crds: codegen-crds-all ## Generate helm CRDs
 	$(call generate_crd,kyverno.io_policies.yaml,kyverno,kyverno.io,kyverno,policies)
 	$(call generate_crd,kyverno.io_policyexceptions.yaml,kyverno,kyverno.io,kyverno,policyexceptions)
 	$(call generate_crd,kyverno.io_updaterequests.yaml,kyverno,kyverno.io,kyverno,updaterequests)
-	$(call generate_crd,kyverno.io_validatingpolicies.yaml,kyverno,kyverno.io,kyverno,validatingpolicies)
 	$(call generate_crd,reports.kyverno.io_clusterephemeralreports.yaml,reports,reports.kyverno.io,reports,clusterephemeralreports)
 	$(call generate_crd,reports.kyverno.io_ephemeralreports.yaml,reports,reports.kyverno.io,reports,ephemeralreports)
 	$(call generate_crd,wgpolicyk8s.io_clusterpolicyreports.yaml,policyreport,wgpolicyk8s.io,wgpolicyk8s,clusterpolicyreports)

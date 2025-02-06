@@ -19,7 +19,6 @@ import (
 	kyvernov1 "github.com/kyverno/kyverno/api/kyverno/v1"
 	kyvernov2alpha1 "github.com/kyverno/kyverno/api/kyverno/v2alpha1"
 	"github.com/kyverno/kyverno/ext/wildcard"
-	"github.com/kyverno/kyverno/pkg/admissionpolicy"
 	"github.com/kyverno/kyverno/pkg/autogen"
 	"github.com/kyverno/kyverno/pkg/client/clientset/versioned"
 	"github.com/kyverno/kyverno/pkg/clients/dclient"
@@ -28,8 +27,10 @@ import (
 	"github.com/kyverno/kyverno/pkg/engine/variables/operator"
 	"github.com/kyverno/kyverno/pkg/engine/variables/regex"
 	"github.com/kyverno/kyverno/pkg/logging"
+	celutils "github.com/kyverno/kyverno/pkg/utils/cel"
 	datautils "github.com/kyverno/kyverno/pkg/utils/data"
 	kubeutils "github.com/kyverno/kyverno/pkg/utils/kube"
+	vaputils "github.com/kyverno/kyverno/pkg/validatingadmissionpolicy"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
@@ -241,7 +242,7 @@ func Validate(policy, oldPolicy kyvernov1.PolicyInterface, client dclient.Interf
 		return warnings, err
 	}
 
-	rules := autogen.Default.ComputeRules(policy, "")
+	rules := autogen.ComputeRules(policy, "")
 	rulesPath := specPath.Child("rules")
 
 	for i, rule := range rules {
@@ -482,7 +483,7 @@ func Validate(policy, oldPolicy kyvernov1.PolicyInterface, client dclient.Interf
 	}
 
 	// check for CEL expression warnings in case of CEL subrules
-	if ok, _ := admissionpolicy.CanGenerateVAP(spec, nil); ok && client != nil {
+	if ok, _ := vaputils.CanGenerateVAP(spec, nil); ok && client != nil {
 		resolver := &resolver.ClientDiscoveryResolver{
 			Discovery: client.GetKubeClient().Discovery(),
 		}
@@ -502,11 +503,11 @@ func Validate(policy, oldPolicy kyvernov1.PolicyInterface, client dclient.Interf
 				Name: policy.GetName(),
 			},
 		}
-		err = admissionpolicy.BuildValidatingAdmissionPolicy(client.Discovery(), vap, policy, nil)
+		err = vaputils.BuildValidatingAdmissionPolicy(client.Discovery(), vap, policy, nil)
 		if err != nil {
 			return nil, err
 		}
-		v1vap := admissionpolicy.ConvertValidatingAdmissionPolicy(*vap)
+		v1vap := vaputils.ConvertValidatingAdmissionPolicy(*vap)
 
 		// check cel expression warnings
 		ctx := checker.CreateContext(&v1vap)
@@ -541,11 +542,11 @@ func isGlobalContextEntryReady(name string, gctxentries *kyvernov2alpha1.GlobalC
 }
 
 func ValidateCustomWebhookMatchConditions(wc []admissionregistrationv1.MatchCondition) error {
-	c, err := admissionpolicy.NewCompiler(wc, nil)
+	c, err := celutils.NewCompiler(nil, nil, wc, nil)
 	if err != nil {
 		return err
 	}
-	f := c.CompileMatchConditions(cel.OptionalVariableDeclarations{})
+	f := c.CompileMatchExpressions(cel.OptionalVariableDeclarations{})
 	if len(f.CompilationErrors()) > 0 {
 		return fmt.Errorf("match conditions compilation errors: %v", f.CompilationErrors())
 	}
@@ -570,7 +571,7 @@ func ValidateVariables(p kyvernov1.PolicyInterface, backgroundMode bool) error {
 
 // hasInvalidVariables - checks for unexpected variables in the policy
 func hasInvalidVariables(policy kyvernov1.PolicyInterface, background bool) error {
-	for _, r := range autogen.Default.ComputeRules(policy, "") {
+	for _, r := range autogen.ComputeRules(policy, "") {
 		ruleCopy := r.DeepCopy()
 
 		if err := ruleForbiddenSectionsHaveVariables(ruleCopy); err != nil {

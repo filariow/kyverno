@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/kyverno/kyverno/pkg/admissionpolicy"
 	kyvernov1informers "github.com/kyverno/kyverno/pkg/client/informers/externalversions/kyverno/v1"
 	kyvernov1listers "github.com/kyverno/kyverno/pkg/client/listers/kyverno/v1"
 	"github.com/kyverno/kyverno/pkg/clients/dclient"
@@ -17,6 +16,7 @@ import (
 	controllerutils "github.com/kyverno/kyverno/pkg/utils/controller"
 	kubeutils "github.com/kyverno/kyverno/pkg/utils/kube"
 	reportutils "github.com/kyverno/kyverno/pkg/utils/report"
+	"github.com/kyverno/kyverno/pkg/validatingadmissionpolicy"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -96,13 +96,10 @@ func NewController(
 	vapInformer admissionregistrationv1beta1informers.ValidatingAdmissionPolicyInformer,
 ) Controller {
 	c := controller{
-		client:     client,
-		polLister:  polInformer.Lister(),
-		cpolLister: cpolInformer.Lister(),
-		queue: workqueue.NewTypedRateLimitingQueueWithConfig(
-			workqueue.DefaultTypedControllerRateLimiter[any](),
-			workqueue.TypedRateLimitingQueueConfig[any]{Name: ControllerName},
-		),
+		client:          client,
+		polLister:       polInformer.Lister(),
+		cpolLister:      cpolInformer.Lister(),
+		queue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any](), ControllerName),
 		dynamicWatchers: map[schema.GroupVersionResource]*watcher{},
 	}
 	if vapInformer != nil {
@@ -249,7 +246,7 @@ func (c *controller) updateDynamicWatchers(ctx context.Context) error {
 		}
 		// fetch kinds from validating admission policies
 		for _, policy := range vapPolicies {
-			kinds := admissionpolicy.GetKinds(policy)
+			kinds := validatingadmissionpolicy.GetKinds(policy)
 			for _, kind := range kinds {
 				group, version, kind, subresource := kubeutils.ParseKindSelector(kind)
 				c.addGVKToGVRMapping(group, version, kind, subresource, gvkToGvr)

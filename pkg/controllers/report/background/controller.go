@@ -104,10 +104,7 @@ func NewController(
 ) controllers.Controller {
 	ephrInformer := metadataFactory.ForResource(reportsv1.SchemeGroupVersion.WithResource("ephemeralreports"))
 	cephrInformer := metadataFactory.ForResource(reportsv1.SchemeGroupVersion.WithResource("clusterephemeralreports"))
-	queue := workqueue.NewTypedRateLimitingQueueWithConfig(
-		workqueue.DefaultTypedControllerRateLimiter[any](),
-		workqueue.TypedRateLimitingQueueConfig[any]{Name: ControllerName},
-	)
+	queue := workqueue.NewNamedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any](), ControllerName)
 	c := controller{
 		client:         client,
 		kyvernoClient:  kyvernoClient,
@@ -362,9 +359,9 @@ func (c *controller) reconcileReport(
 		for _, policy := range policies {
 			var key string
 			var err error
-			if policy.AsKyvernoPolicy() != nil {
+			if policy.GetType() == engineapi.KyvernoPolicyType {
 				key, err = cache.MetaNamespaceKeyFunc(policy.AsKyvernoPolicy())
-			} else if policy.AsValidatingAdmissionPolicy() != nil {
+			} else {
 				key, err = cache.MetaNamespaceKeyFunc(policy.AsValidatingAdmissionPolicy())
 			}
 			if err != nil {
@@ -412,7 +409,7 @@ func (c *controller) reconcileReport(
 	// calculate necessary results
 	for _, policy := range policies {
 		reevaluate := false
-		if policy.AsKyvernoPolicy() != nil {
+		if policy.GetType() == engineapi.KyvernoPolicyType {
 			for _, polex := range exceptions {
 				if actual[reportutils.PolicyExceptionLabel(polex)] != polex.GetResourceVersion() {
 					reevaluate = true
@@ -541,7 +538,7 @@ func (c *controller) reconcile(ctx context.Context, log logr.Logger, key, namesp
 			return err
 		}
 		for _, pol := range vapPolicies {
-			policies = append(policies, engineapi.NewValidatingAdmissionPolicy(&pol))
+			policies = append(policies, engineapi.NewValidatingAdmissionPolicy(pol))
 		}
 	}
 	var vapBindings []admissionregistrationv1beta1.ValidatingAdmissionPolicyBinding
