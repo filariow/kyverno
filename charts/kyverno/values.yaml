@@ -144,6 +144,9 @@ crds:
     # -- Node labels for pod assignment
     nodeSelector: {}
 
+    # -- Pod's resources
+    podResources: {}
+
     # -- List of node taints to tolerate
     tolerations: []
 
@@ -513,6 +516,9 @@ webhooksCleanup:
   # -- Node labels for pod assignment
   nodeSelector: {}
 
+  # -- Pod's resources
+  resources: {}
+
   # -- List of node taints to tolerate
   tolerations: []
 
@@ -570,6 +576,9 @@ policyReportsCleanup:
 
   # -- Node labels for pod assignment
   nodeSelector: {}
+
+  # -- Pod's resources
+  resources: {}
 
   # -- List of node taints to tolerate
   tolerations: []
